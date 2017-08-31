@@ -25,6 +25,39 @@ foreach my $arg (@ARGV) {
     }
 }
 
+my $check_sru_bug_py = '
+import sys
+
+from launchpadlib.launchpad import Launchpad
+
+bug_number = int(sys.argv[1])
+source_package_name = sys.argv[2]
+distro_series_name = sys.argv[3]
+
+lp = Launchpad.login_with("sru-scanner", "production", version="devel")
+
+distro_series = lp.distributions["ubuntu"].getSeries(name_or_version=distro_series_name)
+
+bug = lp.bugs[int(sys.argv[1])]
+
+for task in bug.bug_tasks:
+    target = task.target
+    ds = getattr(target, "distroseries", None)
+    if ds != distro_series:
+        continue
+    if target.name != source_package_name:
+        continue
+    if task.status not in ["New", "Confirmed", "Triaged"]:
+        print("bug %s has task for %s/%s with unsuitable status %s"%(bug_number, distro_series_name, source_package_name, task.status))
+        sys.exit(1)
+    else:
+        # yay, all ok
+        sys.exit(0)
+
+print("bug %s has no task for %s/%s"%(bug_number, distro_series_name, source_package_name))
+sys.exit(1)
+';
+
 my $c = Dpkg::Control->new(type=>CTRL_FILE_CHANGES);
 $c->load($changes);
 my $version = $c->{Version};
@@ -50,6 +83,20 @@ if ($target eq "ubuntu") {
                 die "no [~+]$codename in version for upload targeting $distribution, found $1 though\n";
             } else {
                 die "no [~+]$codename in version for upload targeting $distribution\n";
+            }
+        }
+        if (!defined($c->{"Launchpad-Bugs-Fixed"})) {
+            die "$changes does not close a bug\n";
+        }
+        my $source = $c->{Source};
+        foreach my $bug (split /\s+/,$c->{"Launchpad-Bugs-Fixed"}) {
+            open(my $fh, "-|", "python", "-c", $check_sru_bug_py, $bug, $source, $distribution);
+            my $msg;
+            while (<$fh>) {
+                $msg .= $_;
+            }
+            if (!close($fh)) {
+                die "$msg";
             }
         }
     }
