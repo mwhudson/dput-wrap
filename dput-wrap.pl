@@ -34,11 +34,15 @@ bug_number = int(sys.argv[1])
 source_package_name = sys.argv[2]
 distro_series_name = sys.argv[3]
 
-lp = Launchpad.login_with("sru-scanner", "production", version="devel")
+lp = Launchpad.login_anonymously("devel")
 
 distro_series = lp.distributions["ubuntu"].getSeries(name_or_version=distro_series_name)
 
-bug = lp.bugs[int(sys.argv[1])]
+try:
+   bug = lp.bugs[bug_number]
+except KeyError:
+   print("cannot find bug #%s, maybe private?"%bug_number)
+   sys.exit(1)
 
 for task in bug.bug_tasks:
     target = task.target
