@@ -105,7 +105,7 @@ if ($target eq "ubuntu") {
         }
     }
 } elsif ($target =~ /^ppa:/) {
-    if (!($target =~ "[+~]ppa")) {
+    if (!($version =~ "[+~]ppa")) {
         die "no [+~]ppa in version for ppa\n"
     }
 } else { # must be debian!
