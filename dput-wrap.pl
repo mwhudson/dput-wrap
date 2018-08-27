@@ -3,6 +3,7 @@
 use strict;
 
 use Dpkg::Control;
+use Dpkg::Version;
 
 my @args;
 my $target = "ubuntu";
@@ -54,7 +55,7 @@ found = False
 exit_code = 0
 
 if "[regression potential]" not in bug.description.lower():
-    print("bug does not appear to follow SRU template")
+    print("bug {} does not appear to follow SRU template".format(bug_number))
     exit_code = 1
 
 for task in bug.bug_tasks:
@@ -96,17 +97,42 @@ if ($target eq "ubuntu") {
         die "could not find codename for $distribution (mis-spelled?)\n" unless $codename ne '';
         chomp($codename);
         $codename = (split /\s+/, $codename)[0];
+        my $source = $c->{Source};
         if ($versioncheck && !($version =~ /[~+.]\Q$codename\E/)) {
-            if ($version =~ /([~+.][0-9][0-9]\.[0-9][0-9])/) {
-                die "no [~+]$codename in version for upload targeting $distribution, found $1 though\n";
-            } else {
-                die "no [~+]$codename in version for upload targeting $distribution\n";
+            open(my $fh, "-|", "chdist", "apt-cache", $distribution, "madison", $source);
+            my @vers;
+            while (<$fh>) {
+                chomp;
+                /Sources$/ || next;
+                my $ver = (split /\|/)[1];
+                $ver =~ s/^\s+|\s+$//g;
+                push @vers, $ver;
+            }
+            my $firstver = (sort version_compare @vers)[0];
+            my $curver = (reverse (sort version_compare @vers))[0];
+            my $trailing = $curver;
+            $trailing =~ s/.*\.([0-9]+)$/$1/;
+            $trailing++;
+            my $ok = 0;
+            if ($curver eq $firstver && $version eq "$curver.1") {
+                $ok = 1;
+                print("good version number for first SRU\n");
+            }
+            if ($curver ne $firstver && $version eq "$firstver.$trailing") {
+                $ok = 1;
+                print("good version number for subsequent SRU\n");
+            }
+            if (!$ok) {
+                if ($version =~ /([~+.][0-9][0-9]\.[0-9][0-9])/) {
+                    die "no [~+]$codename in version for upload targeting $distribution, found $1 though\n";
+                } else {
+                    die "no [~+]$codename in version for upload targeting $distribution\n";
+                }
             }
         }
         if (!defined($c->{"Launchpad-Bugs-Fixed"})) {
             die "$changes does not close a bug\n";
         }
-        my $source = $c->{Source};
         foreach my $bug (split /\s+/,$c->{"Launchpad-Bugs-Fixed"}) {
             open(my $fh, "-|", "python", "-c", $check_sru_bug_py, $bug, $source, $distribution);
             my $msg;
