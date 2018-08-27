@@ -8,10 +8,16 @@ my @args;
 my $target = "ubuntu";
 my $changes;
 my $dryrun = 0;
+my $versioncheck = 1;
+
 
 foreach my $arg (@ARGV) {
     if ($arg eq '-n') {
         $dryrun = 1;
+        next;
+    }
+    if ($arg eq '--no-version-check') {
+        $versioncheck = 0;
         next;
     }
     push @args, $arg;
@@ -34,7 +40,7 @@ bug_number = int(sys.argv[1])
 source_package_name = sys.argv[2]
 distro_series_name = sys.argv[3]
 
-lp = Launchpad.login_anonymously("devel")
+lp = Launchpad.login_with("sru-scanner", "production", version="devel")
 
 distro_series = lp.distributions["ubuntu"].getSeries(name_or_version=distro_series_name)
 
@@ -44,6 +50,13 @@ except KeyError:
    print("cannot find bug #%s, maybe private?"%bug_number)
    sys.exit(1)
 
+found = False
+exit_code = 0
+
+if "[regression potential]" not in bug.description.lower():
+    print("bug does not appear to follow SRU template")
+    exit_code = 1
+
 for task in bug.bug_tasks:
     target = task.target
     ds = getattr(target, "distroseries", None)
@@ -51,15 +64,16 @@ for task in bug.bug_tasks:
         continue
     if target.name != source_package_name:
         continue
-    if task.status not in ["New", "Confirmed", "Triaged"]:
+    found = True
+    if task.status not in ["New", "Confirmed", "Triaged", "In Progress"]:
         print("bug %s has task for %s/%s with unsuitable status %s"%(bug_number, distro_series_name, source_package_name, task.status))
-        sys.exit(1)
-    else:
-        # yay, all ok
-        sys.exit(0)
+        exit_code = 1
 
-print("bug %s has no task for %s/%s"%(bug_number, distro_series_name, source_package_name))
-sys.exit(1)
+if not found:
+    print("bug %s has no task for %s/%s"%(bug_number, distro_series_name, source_package_name))
+    exit_code = 1
+
+sys.exit(exit_code)
 ';
 
 my $c = Dpkg::Control->new(type=>CTRL_FILE_CHANGES);
@@ -82,8 +96,8 @@ if ($target eq "ubuntu") {
         die "could not find codename for $distribution (mis-spelled?)\n" unless $codename ne '';
         chomp($codename);
         $codename = (split /\s+/, $codename)[0];
-        if (!($version =~ /[~+]\Q$codename\E/)) {
-            if ($version =~ /([~+][0-9][0-9]\.[0-9][0-9])/) {
+        if ($versioncheck && !($version =~ /[~+.]\Q$codename\E/)) {
+            if ($version =~ /([~+.][0-9][0-9]\.[0-9][0-9])/) {
                 die "no [~+]$codename in version for upload targeting $distribution, found $1 though\n";
             } else {
                 die "no [~+]$codename in version for upload targeting $distribution\n";
@@ -100,7 +114,8 @@ if ($target eq "ubuntu") {
                 $msg .= $_;
             }
             if (!close($fh)) {
-                die "$msg";
+                print("$msg");
+                die "sru bug check failed";
             }
         }
     }
