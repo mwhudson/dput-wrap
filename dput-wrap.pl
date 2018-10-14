@@ -109,18 +109,24 @@ if ($target eq "ubuntu") {
                 push @vers, $ver;
             }
             my $firstver = (sort version_compare @vers)[0];
+            $firstver =~ s/(.*)build[0-9]+/$1/;
             my $curver = (reverse (sort version_compare @vers))[0];
-            my $trailing = $curver;
-            $trailing =~ s/.*\.([0-9]+)$/$1/;
-            $trailing++;
+            $curver =~ s/(.*)build[0-9]+/$1/;
+            my $first = ($firstver eq $curver);
             my $ok = 0;
-            if ($curver eq $firstver && $version eq "$curver.1") {
-                $ok = 1;
-                print("good version number for first SRU\n");
-            }
-            if ($curver ne $firstver && $version eq "$firstver.$trailing") {
-                $ok = 1;
-                print("good version number for subsequent SRU\n");
+            if ($first) {
+                if ($version eq "$curver.1") {
+                    $ok = 1;
+                    print("good version number for first SRU\n");
+                }
+            } else {
+                my $trailing = $curver;
+                $trailing =~ s/.*\.([0-9]+)$/$1/;
+                $trailing++;
+                if ( $version eq "$firstver.$trailing") {
+                    $ok = 1;
+                    print("good version number for subsequent SRU\n");
+                }
             }
             if (!$ok) {
                 if ($version =~ /([~+.][0-9][0-9]\.[0-9][0-9])/) {
