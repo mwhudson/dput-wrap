@@ -54,7 +54,8 @@ except KeyError:
 found = False
 exit_code = 0
 
-if "[regression potential]" not in bug.description.lower():
+if "[regression potential]" not in bug.description.lower() and \
+   "[where problems could occur]" not in bug.description.lower():
     print("bug {} does not appear to follow SRU template".format(bug_number))
     exit_code = 1
 
@@ -66,7 +67,7 @@ for task in bug.bug_tasks:
     if target.name != source_package_name:
         continue
     found = True
-    if task.status not in ["New", "Confirmed", "Triaged", "In Progress"]:
+    if task.status not in ["New", "Confirmed", "Triaged", "In Progress", "Fix Committed"]:
         print("bug %s has task for %s/%s with unsuitable status %s"%(bug_number, distro_series_name, source_package_name, task.status))
         exit_code = 1
 
@@ -82,14 +83,14 @@ $c->load($changes);
 my $version = $c->{Version};
 my $distribution = $c->{Distribution};
 
-if ($target eq "ubuntu") {
+if ($target eq "ubuntu" || $target eq "ppa:ubuntu-mozilla-security/rust-updates") {
     if ($version =~ "ppa") {
         die("ppa version to ubuntu")
     }
     my $devel = qx/ubuntu-distro-info --devel/;
     chomp($devel);
     if ($distribution eq $devel) {
-        if ($version =~ /[~+][0-9][0-9]\.[0-9][0-9]/) {
+        if ($versioncheck && $version =~ /[~+][0-9][0-9]\.[0-9][0-9]/) {
             die("do not upload [~+]XX.YY version to devel\n")
         }
     } else {
@@ -140,7 +141,7 @@ if ($target eq "ubuntu") {
             die "$changes does not close a bug\n";
         }
         foreach my $bug (split /\s+/,$c->{"Launchpad-Bugs-Fixed"}) {
-            open(my $fh, "-|", "python", "-c", $check_sru_bug_py, $bug, $source, $distribution);
+            open(my $fh, "-|", "python3", "-c", $check_sru_bug_py, $bug, $source, $distribution);
             my $msg;
             while (<$fh>) {
                 $msg .= $_;
